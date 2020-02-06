@@ -5,23 +5,25 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
+import os
 
-"""
-Download and load the data
-"""
-def loadData():
+
+def load_data(batch_size=128):
+    """
+    Download and load the data
+    """
     transform = transforms.Compose(
         [transforms.ToTensor(),
          transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
     train_set = torchvision.datasets.CIFAR10(root='./data.cifar10', train=True,
                                             download=True, transform=transform)
-    train_loader = torch.utils.data.DataLoader(train_set, batch_size=10,
+    train_loader = torch.utils.data.DataLoader(train_set, batch_size=batch_size,
                                               shuffle=True, num_workers=2)
 
     test_set = torchvision.datasets.CIFAR10(root='./data.cifar10', train=False,
                                            download=True, transform=transform)
-    test_loader = torch.utils.data.DataLoader(test_set, batch_size=10,
+    test_loader = torch.utils.data.DataLoader(test_set, batch_size=batch_size,
                                              shuffle=False, num_workers=2)
 
     classes = ('plane', 'car', 'bird', 'cat',
@@ -78,29 +80,28 @@ def train(net, train_dataset, criterion, optimizer, device):
         loss.backward()
         optimizer.step()
 
-        # print statistics
-        # running_loss += loss.item()
-        # if i % 1000 == 999:    # print every 2000 mini-batches
-        #     print('[%d, %5d] loss: %.3f' %
-        #           (epoch + 1, i + 1, running_loss / 1000))
-        #     running_loss = 0.0
-
 
 def main():
-    train_loader, test_loader, classes = loadData()
+    train_loader, test_loader, classes = load_data()
     net = Net()
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(net.parameters(), lr=0.001)
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     net.to(device)
     print("Using Device %s" % device)
-    for epoch in range(1):
+    best_test_accuracy = 0
+    for epoch in range(10):
         train(net, train_loader, criterion, optimizer, device)
         train_accuracy, train_loss = test(net, train_loader, criterion, device)
         test_accuracy, test_loss = test(net, test_loader, criterion, device)
-        print("### Epoch {}\ttrain accuracy: {}%\ttrain loss: {}\ttest accuracy: {}%\ttest loss:{}"
+        print("### Epoch {}\t\ttrain accuracy: {}%\t\ttrain loss: {}\t\ttest accuracy: {}%\t\ttest loss:{}"
               .format(epoch+1, train_accuracy, train_loss, test_accuracy, test_loss))
-
+        if best_test_accuracy < test_accuracy:
+            best_test_accuracy = test_accuracy
+            if not os.path.isdir('./model'):
+                os.mkdir('./model')
+            torch.save(net.state_dict(), "./model/fc.pt")
+            print("### Epoch {}\t\tSave Model fot test accuracy {}% ".format(epoch+1, best_test_accuracy))
     print("Finish!")
 
 
