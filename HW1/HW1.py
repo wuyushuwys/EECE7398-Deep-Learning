@@ -134,11 +134,3 @@ if __name__ == '__main__':
         label = test(net, image_tensor, device, flag='inference')
         classes = ('plane', 'car', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck')
         print("Predict: %s" % classes[label])
-
-
-
-
-
-
-
-
