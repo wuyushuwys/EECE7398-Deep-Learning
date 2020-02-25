@@ -1,11 +1,6 @@
-/**/.ipynb_checkpoints/
-/HW1/data.cifar10/
-/HW1/.idea/
-/HW1/model/
 /.idea/
-/HW2/.ipynb_checkpoints/
-/HW2/data.cifar10/
-/HW2/.idea/
-/HW2/model/
-/.DStore/
-/**/.DStore/
+/**/.ipynb_checkpoints/
+/**/data.cifar10/
+/**/.idea/
+/.DStore
+/**/.DStore
