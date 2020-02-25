@@ -7,7 +7,7 @@ import numpy as np
 import os
 import argparse
 from PIL import Image
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 from time import time
 import matplotlib.pyplot as plt
 
@@ -168,7 +168,7 @@ if __name__ == '__main__':
     elif arg.mode == 'test':
         net = Net()
         net.to(device)
-        net.load_state_dict(torch.load('./model/cnn.pt'))
+        net.load_state_dict(torch.load('./model/cnn.pt', map_location=device))
         print("Load network from ./model/cnn.pt")
         # Open image
         img = Image.open(arg.image)
