@@ -4,41 +4,41 @@ import unicodedata
 import string
 import re
 import random
+import os
+from collections import Counter
+import argparse
+import time
+import math
+
 
 import torch
 import torch.nn as nn
 from torch import optim
 import torch.nn.functional as F
 
-import matplotlib.pyplot as plt
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
-import matplotlib.ticker as ticker
 import numpy as np
-
-import time
-import math
 
 
 class Lang:
-    def __init__(self, name):
+    def __init__(self, name, vocab_path):
         self.name = name
-        self.word2index = {}
-        self.word2count = {}
-        self.index2word = {0: "SOS", 1: "EOS"}
-        self.n_words = 2  # Count SOS and EOS
-
-    def addSentence(self, sentence):
-        for word in sentence.split(' '):
-            self.addWord(word)
-
-    def addWord(self, word):
-        if word not in self.word2index:
+        self.word2index = {'<unk>':0}
+#         self.word2count = {}
+        self.index2word = {0:'<unk>',1: "SOS", 2: "EOS"}
+        self.n_words = 3 # Count <unk>, SOS and EOS
+        self.vocab_path = vocab_path
+        
+    def loadVocab(self):
+        with open(self.vocab_path) as f:
+            rawData = f.readlines()
+            vocab = list(map(lambda word: word[:-1], rawData))
+        vocab_norm = [normalizeString(word) for word in vocab]
+        unique_vocab_norm = list(Counter(vocab_norm).keys())
+        for word in unique_vocab_norm:
             self.word2index[word] = self.n_words
-            self.word2count[word] = 1
             self.index2word[self.n_words] = word
             self.n_words += 1
-        else:
-            self.word2count[word] += 1
 
 
 # Turn a Unicode string to plain ASCII, thanks to
@@ -75,11 +75,11 @@ def readLangs(lang1, lang2, vocab1=None, vocab2=None, reverse=False):
     # Reverse pairs, make Lang instances
     if reverse:
         pairs = [list(reversed(p)) for p in pairs]
-        input_lang = Lang(lang2)
-        output_lang = Lang(lang1)
+        input_lang = Lang(lang2, vocab2)
+        output_lang = Lang(lang1, vocab1)
     else:
-        input_lang = Lang(lang1)
-        output_lang = Lang(lang2)
+        input_lang = Lang(lang1, vocab1)
+        output_lang = Lang(lang2, vocab2)
 
     return input_lang, output_lang, pairs
 
@@ -94,17 +94,18 @@ def filterPairs(pairs, max_length=50):
 
 
 def prepareData(lang1, lang2, vocab1=None, vocab2=None, reverse=False, max_length=50):
+    print('loading data from: '+lang1)
+    print('loading data from: '+lang2)
     input_lang, output_lang, pairs = readLangs(lang1, lang2, vocab1=vocab1, vocab2=vocab2, reverse=reverse)
     print("Read %s sentence pairs" % len(pairs))
     pairs = filterPairs(pairs, max_length)
     print("Trimmed to %s sentence pairs" % len(pairs))
     print("Counting words...")
-    for pair in pairs:
-        input_lang.addSentence(pair[0])
-        output_lang.addSentence(pair[1])
+    input_lang.loadVocab()
+    output_lang.loadVocab()
     print("Counted words:")
-    print(input_lang.name, input_lang.n_words)
-    print(output_lang.name, output_lang.n_words)
+    print("In vocabulary "+input_lang.vocab_path+': ', input_lang.n_words)
+    print("In vocabulary "+output_lang.vocab_path+': ', output_lang.n_words)
     return input_lang, output_lang, pairs
 
 
@@ -185,8 +186,13 @@ class AttnDecoderRNN(nn.Module):
 
 
 def indexesFromSentence(lang, sentence):
-    return [lang.word2index[word] for word in sentence.split(' ')]
-
+    indexes = []
+    for word in sentence.split(' '):
+        if word in lang.word2index:
+            indexes.append(lang.word2index[word])
+        else:
+            indexes.append(lang.word2index['<unk>'])
+    return indexes
 
 def tensorFromSentence(lang, sentence):
     indexes = indexesFromSentence(lang, sentence)
@@ -255,7 +261,7 @@ def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, deco
 def asMinutes(s):
     m = math.floor(s / 60)
     s -= m * 60
-    return '%dm %ds' % (m, s)
+    return '%02dm %02ds' % (m, s)
 
 
 def timeSince(since, percent):
@@ -271,44 +277,47 @@ def trainIters(encoder, decoder, n_iters, print_every=1000, plot_every=100, lear
     plot_losses = []
     print_loss_total = 0  # Reset every print_every
     plot_loss_total = 0  # Reset every plot_every
-
-    encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
-    decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
+    
+    
+    if not os.path.isdir('model'):
+        os.mkdir('model')
+    
+    encoder_optimizer = optim.Adagrad(encoder.parameters(), lr=learning_rate, lr_decay=0.01, weight_decay=0.001)
+    decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0.01, weight_decay=0.001)
     training_pairs = [tensorsFromPair(random.choice(pairs))
                       for i in range(n_iters)]
     criterion = nn.NLLLoss()
-    max_length = decoder.max_length
-    for iter in range(1, n_iters + 1):
+    
+    for iter in range(1, n_iters+1):
         training_pair = training_pairs[iter - 1]
         input_tensor = training_pair[0]
         target_tensor = training_pair[1]
 
         loss = train(input_tensor, target_tensor, encoder,
-                     decoder, encoder_optimizer, decoder_optimizer, criterion, max_length=max_length)
+                     decoder, encoder_optimizer, decoder_optimizer, criterion)
+        if iter >1:
+            if old_loss > loss:
+                torch.save(encoder.state_dict(), './model/encoder.pt')
+                torch.save(decoder.state_dict(), './model/decoder.pt')
+                
         print_loss_total += loss
         plot_loss_total += loss
+        
+        if iter == 1 or iter == n_iters+1:
+            print('###%s\t\t(%03d %03d%%)\t\tloss:%.4f' % (timeSince(start, iter / n_iters),
+                                         iter, iter / n_iters * 100, loss))
+            np.save('train_loss', plot_losses)
 
         if iter % print_every == 0:
             print_loss_avg = print_loss_total / print_every
             print_loss_total = 0
-            print('%s (%d %d%%) %.4f' % (timeSince(start, iter / n_iters),
+            print('###%s\t\t(%03d %03d%%)\t\tloss:%.4f' % (timeSince(start, iter / n_iters),
                                          iter, iter / n_iters * 100, print_loss_avg))
-
+        old_loss = loss
         if iter % plot_every == 0:
             plot_loss_avg = plot_loss_total / plot_every
             plot_losses.append(plot_loss_avg)
             plot_loss_total = 0
-
-    # showPlot(plot_losses)
-
-
-def showPlot(points):
-    plt.figure()
-    fig, ax = plt.subplots()
-    # this locator puts ticks at regular intervals
-    loc = ticker.MultipleLocator(base=0.2)
-    ax.yaxis.set_major_locator(loc)
-    plt.plot(points)
 
 
 def evaluate(encoder, decoder, sentence):
@@ -348,12 +357,11 @@ def evaluate(encoder, decoder, sentence):
 
 
 def evaluateRandomly(encoder, decoder, n=5):
-    max_length=decoder.max_length
     for i in range(n):
         pair = random.choice(pairs)
         print('>', pair[0])
         print('=', pair[1])
-        output_words, attentions = evaluate(encoder, decoder, pair[0], max_length=max_length)
+        output_words, attentions = evaluate(encoder, decoder, pair[0])
         output_sentence = ' '.join(output_words)
         print('<', output_sentence)
         print('')
@@ -374,7 +382,12 @@ def testBlueScore(encoder, decoder, pairs):
 
 
 if __name__ == '__main__':
-    device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
+    parser = argparse.ArgumentParser(description='Neural Machine Translation')
+    parser.add_argument('mode', type=str, help='Mode: train / test / translate')
+    arg = parser.parse_args()
+    
+    
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     SOS_token = 0
     EOS_token = 1
 
@@ -382,17 +395,18 @@ if __name__ == '__main__':
 
     teacher_forcing_ratio = 0.5
     TRAIN_PATH = ['./dataset/English-Vietnamese/trainset/train.en', './dataset/English-Vietnamese/trainset/train.vi']
-    VOCAB_PATH = []
+    VOCAB_PATH = ['dataset/English-Vietnamese/Vocabularies/vocab.en', 'dataset/English-Vietnamese/Vocabularies/vocab.vi']
     TEST_PATH = ['./dataset/English-Vietnamese/testset/tst2012.en', './dataset/English-Vietnamese/testset/tst2012.vi']
-    input_lang, output_lang, pairs = prepareData(TRAIN_PATH[0],TRAIN_PATH[1], reverse=False, max_length=MAX_LENGTH)
-    print(random.choice(pairs))
+    
+    if arg.mode=='train':
+        input_lang, output_lang, pairs = prepareData(TRAIN_PATH[0],TRAIN_PATH[1], VOCAB_PATH[0], VOCAB_PATH[1], False, max_length=MAX_LENGTH)
+        print(random.choice(pairs))
 
-    plt.switch_backend('agg')
+        hidden_size = 256
+        encoder1 = EncoderRNN(input_lang.n_words, hidden_size).to(device)
+        attn_decoder1 = AttnDecoderRNN(hidden_size, output_lang.n_words, dropout_p=0.3).to(device)
+        trainIters(encoder1, attn_decoder1, 100000, print_every=2000)
 
-    hidden_size = 256
-    encoder1 = EncoderRNN(input_lang.n_words, hidden_size).to(device)
-    attn_decoder1 = AttnDecoderRNN(hidden_size, output_lang.n_words, dropout_p=0.1, max_length=MAX_LENGTH).to(device)
-
-    trainIters(encoder1, attn_decoder1, 20000, print_every=500)
-    evaluateRandomly(encoder1, attn_decoder1)
-    _, _, test_pair = prepareData(TEST_PATH[0], TEST_PATH[1], reverse=False, max_length=MAX_LENGTH)
+        evaluateRandomly(encoder1, attn_decoder1)
+        _, _, test_pair = prepareData(TEST_PATH[0],TEST_PATH[1], input_lang.vocab_path, output_lang.vocab_path, False, max_length=attn_decoder1.max_length)
+        print("BLUE score:"+str(testBlueScore(encoder1, attn_decoder1, test_pair)))
