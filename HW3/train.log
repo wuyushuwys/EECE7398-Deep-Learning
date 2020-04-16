@@ -1,0 +1,43 @@
+Waiting for initialization...
+loading data from: ./dataset/English-Vietnamese/trainset/train.en
+loading data from: ./dataset/English-Vietnamese/trainset/train.vi
+Reading lines...
+Read 133317 sentence pairs
+Trimmed to 123506 sentence pairs
+Counting words...
+Counted words:
+In vocabulary dataset/English-Vietnamese/Vocabularies/vocab.en:  15358
+In vocabulary dataset/English-Vietnamese/Vocabularies/vocab.vi:  3634
+Creating models...
+Models created
+###00m 02s (- 2157m 31s)		(001 000%)		loss:8.2028
+###11m 53s (- 106m 58s)		(5000 010%)		loss:4.1791
+###24m 21s (- 97m 24s)		(10000 020%)		loss:4.2578
+###36m 58s (- 86m 16s)		(15000 030%)		loss:4.2531
+###49m 42s (- 74m 33s)		(20000 040%)		loss:4.1830
+###62m 23s (- 62m 23s)		(25000 050%)		loss:4.1497
+###75m 11s (- 50m 07s)		(30000 060%)		loss:4.1764
+###87m 54s (- 37m 40s)		(35000 070%)		loss:4.1507
+###100m 42s (- 25m 10s)		(40000 080%)		loss:4.1475
+###113m 32s (- 12m 36s)		(45000 090%)		loss:4.1074
+###126m 18s (- 00m 00s)		(50000 100%)		loss:4.0645
+> we can do this . we apos re educators .
+= chung ta co the lam uoc ieu o . chung ta la nhung nha giao .
+< chung ta co the lam the nay chung ta lam <EOS>
+
+> i learned about ordinary people who could be heroes .
+= toi hoc ve nhung con nguoi rat binh thuong nhung nguoi a tro thanh nguoi hung .
+< toi co nguoi nguoi nguoi nguoi nguoi nguoi <unk> <unk> <EOS>
+
+> precise measurements by grace the gravity satellite reveal that both greenland and antarctica are now losing mass several hundred cubic kilometers per year .
+= cac o luong ti mi cua ve tinh grace cho thay ca greenland va nam cuc ang mat i hang tram km vuong moi nam .
+< ngay ca <unk> o o a o o o en tu nam en nhung <unk> <unk> <unk> <unk> <EOS>
+
+> i i knew i had something .
+= toi toi biet la toi co mot cai gi o .
+< toi co toi la toi toi co <unk> <EOS>
+
+> but about two centuries before david the hittites had discovered the secret of smelting and processing of iron and slowly that skill spread .
+= nhung khoang thap ki ngay truoc david nhung nguoi hittites a phat hien ra bi mat nau chay va tinh che sat va dan dan ki thuat o uoc truyen i
+< nhung ba cua ve ve nha va va <unk> va <unk> va <unk> va va <EOS>
+

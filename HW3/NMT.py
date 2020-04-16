@@ -23,9 +23,10 @@ import numpy as np
 class Lang:
     def __init__(self, name, vocab_path):
         self.name = name
-        self.word2index = {'<unk>':0}
+        self.word2index = {'<unk>':2}
 #         self.word2count = {}
-        self.index2word = {0:'<unk>',1: "SOS", 2: "EOS"}
+#         self.index2word = {1: "SOS", 2: "EOS"}
+        self.index2word = {0: "SOS", 1: "EOS", 2: '<unk>'}
         self.n_words = 3 # Count <unk>, SOS and EOS
         self.vocab_path = vocab_path
         
@@ -206,6 +207,9 @@ def tensorsFromPair(pair):
     return (input_tensor, target_tensor)
 
 
+
+
+
 def train(input_tensor, target_tensor, encoder, decoder, encoder_optimizer, decoder_optimizer, criterion):
     encoder_hidden = encoder.initHidden()
 
@@ -282,8 +286,8 @@ def trainIters(encoder, decoder, n_iters, print_every=1000, plot_every=100, lear
     if not os.path.isdir('model'):
         os.mkdir('model')
     
-    encoder_optimizer = optim.Adagrad(encoder.parameters(), lr=learning_rate, lr_decay=0.01, weight_decay=0.001)
-    decoder_optimizer = optim.Adagrad(decoder.parameters(), lr=learning_rate, lr_decay=0.01, weight_decay=0.001)
+    encoder_optimizer = optim.SGD(encoder.parameters(), lr=learning_rate)
+    decoder_optimizer = optim.SGD(decoder.parameters(), lr=learning_rate)
     training_pairs = [tensorsFromPair(random.choice(pairs))
                       for i in range(n_iters)]
     criterion = nn.NLLLoss()
@@ -297,8 +301,8 @@ def trainIters(encoder, decoder, n_iters, print_every=1000, plot_every=100, lear
                      decoder, encoder_optimizer, decoder_optimizer, criterion)
         if iter >1:
             if old_loss > loss:
-                torch.save(encoder.state_dict(), './model/encoder.pt')
-                torch.save(decoder.state_dict(), './model/decoder.pt')
+                torch.save(encoder.state_dict(), './model/encoder'+model_name+'.pt')
+                torch.save(decoder.state_dict(), './model/decoder'+model_name+'.pt')
                 
         print_loss_total += loss
         plot_loss_total += loss
@@ -306,7 +310,7 @@ def trainIters(encoder, decoder, n_iters, print_every=1000, plot_every=100, lear
         if iter == 1 or iter == n_iters+1:
             print('###%s\t\t(%03d %03d%%)\t\tloss:%.4f' % (timeSince(start, iter / n_iters),
                                          iter, iter / n_iters * 100, loss))
-            np.save('train_loss', plot_losses)
+            np.save(model_name+'_train_loss', plot_losses)
 
         if iter % print_every == 0:
             print_loss_avg = print_loss_total / print_every
@@ -384,29 +388,58 @@ def testBlueScore(encoder, decoder, pairs):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Neural Machine Translation')
     parser.add_argument('mode', type=str, help='Mode: train / test / translate')
+    parser.add_argument('--lang', type=str, default='V', help='{V: Vietnamese, G: German}')
+    parser.add_argument('--gpu', type=str, default='0', help='GPU index from 0, 1, 2')
+
+
+
+
     arg = parser.parse_args()
-    
-    
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    print("Waiting for initialization...")
+    device = torch.device("cuda:"+arg.gpu if torch.cuda.is_available() else "cpu")
     SOS_token = 0
     EOS_token = 1
 
     MAX_LENGTH = 50
 
     teacher_forcing_ratio = 0.5
-    TRAIN_PATH = ['./dataset/English-Vietnamese/trainset/train.en', './dataset/English-Vietnamese/trainset/train.vi']
-    VOCAB_PATH = ['dataset/English-Vietnamese/Vocabularies/vocab.en', 'dataset/English-Vietnamese/Vocabularies/vocab.vi']
-    TEST_PATH = ['./dataset/English-Vietnamese/testset/tst2012.en', './dataset/English-Vietnamese/testset/tst2012.vi']
-    
+    if arg.lang=='V':
+        model_name = 'Vitnamese'
+        TRAIN_PATH = ['./dataset/English-Vietnamese/trainset/train.en', './dataset/English-Vietnamese/trainset/train.vi']
+        VOCAB_PATH = ['dataset/English-Vietnamese/Vocabularies/vocab.en', 'dataset/English-Vietnamese/Vocabularies/vocab.vi']
+        TEST_PATH = ['./dataset/English-Vietnamese/testset/tst2013.en', './dataset/English-Vietnamese/testset/tst2013.vi']
+    elif arg.lang=='G':
+        model_name = 'German'
+        TRAIN_PATH = ['dataset/English-German/trainset/train.en', 'dataset/English-German/trainset/train.de']
+        VOCAB_PATH = ['dataset/English-German/Vocabularies/vocab.50K.en', 'dataset/English-German/Vocabularies/vocab.50K.de']
+        TEST_PATH = ['dataset/English-German/testset/newstest2012.en', 'dataset/English-German/testset/newstest2012.de']
+
+
+    input_lang, output_lang, pairs = prepareData(TRAIN_PATH[0],TRAIN_PATH[1], VOCAB_PATH[0], VOCAB_PATH[1], False, max_length=MAX_LENGTH)
+#     print(random.choice(pairs))
+
+    hidden_size = 256
+    print("Creating models...")
+    encoder1 = EncoderRNN(input_lang.n_words, hidden_size).to(device)
+    attn_decoder1 = AttnDecoderRNN(hidden_size, output_lang.n_words, dropout_p=0.2).to(device)
+    print("Models created")
     if arg.mode=='train':
-        input_lang, output_lang, pairs = prepareData(TRAIN_PATH[0],TRAIN_PATH[1], VOCAB_PATH[0], VOCAB_PATH[1], False, max_length=MAX_LENGTH)
-        print(random.choice(pairs))
 
-        hidden_size = 256
-        encoder1 = EncoderRNN(input_lang.n_words, hidden_size).to(device)
-        attn_decoder1 = AttnDecoderRNN(hidden_size, output_lang.n_words, dropout_p=0.3).to(device)
-        trainIters(encoder1, attn_decoder1, 100000, print_every=2000)
-
+        trainIters(encoder1, attn_decoder1, 50000, print_every=5000)
         evaluateRandomly(encoder1, attn_decoder1)
-        _, _, test_pair = prepareData(TEST_PATH[0],TEST_PATH[1], input_lang.vocab_path, output_lang.vocab_path, False, max_length=attn_decoder1.max_length)
+
+    elif arg.mode=='test':
+        encoder1.load_state_dict(torch.load('model/encoder'+model_name+'.pt'))
+        attn_decoder1.load_state_dict(torch.load('model/decoder'+model_name+'.pt'))
+        _, _, test_pair = prepareData(TEST_PATH[0],TEST_PATH[1], VOCAB_PATH[0], VOCAB_PATH[1], False, max_length=MAX_LENGTH)
         print("BLUE score:"+str(testBlueScore(encoder1, attn_decoder1, test_pair)))
+    elif arg.mode=='translate':
+        encoder1.load_state_dict(torch.load('model/encoder'+model_name+'.pt'))
+        attn_decoder1.load_state_dict(torch.load('model/decoder'+model_name+'.pt'))
+        while True:
+            print("Please enter your sentense in English")
+            string = str(input())
+            decoded_words, _ = evaluate(encoder1, attn_decoder1, string)
+            output_sentence = ' '.join(decoded_words)
+            print(output_sentence)
